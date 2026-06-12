@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-marketplace.json",
+  "name": "rethlas-claude",
+  "version": "0.1.0",
+  "description": "Claude Code plugins derived from or related to Rethlas.",
+  "owner": {
+    "name": "Rethlas Claude maintainers"
+  },
+  "plugins": [
+    {
+      "name": "rethlas",
+      "description": "Math reasoning workflow for proof blueprint generation and verification in Claude Code.",
+      "source": "./",
+      "category": "development"
+    }
+  ]
+}
