@@ -4,12 +4,22 @@ import json
 import math
 import os
 import re
+import sys
 from collections import Counter
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional
 
 import requests
+
+# Ensure the plugin root is on sys.path so we can import from solver.mcp.
+# (The MCP server runs as `python <path>/server.py` which only puts the
+# script's own directory on sys.path.)
+_PLUGIN_ROOT = Path(__file__).resolve().parents[2]
+if str(_PLUGIN_ROOT) not in sys.path:
+    sys.path.insert(0, str(_PLUGIN_ROOT))
+
+from solver.mcp import envelope
 
 try:
     from fastmcp import FastMCP
@@ -282,12 +292,8 @@ def memory_append(
         }
         _append_jsonl(_channel_path(problem_id, "events"), event_entry)
 
-    return {
-        "status": "ok",
-        "channel": channel,
-        "path": str(target),
-        "entry": entry,
-    }
+    count = sum(1 for _ in _iter_jsonl(target))
+    return envelope.transform_append_result(channel, count)
 
 
 def memory_search(
@@ -326,10 +332,9 @@ def memory_search(
             if score <= 0:
                 continue
             ranked_results.append(
-                {
-                    "score": score,
-                    "item": item,
-                }
+                envelope.transform_item(
+                    {"score": score, "item": item}, channel
+                )
             )
             if len(ranked_results) >= limit_per_channel:
                 break
@@ -373,6 +378,10 @@ def build_mcp_app() -> Optional[Any]:
         query: str,
         num_results: int = 10,
     ) -> Dict[str, Any]:
+        """When to call: Use for retrieving theorems, lemmas, definitions, or constructions relevant to the current proof state.
+        Args: query (str): full mathematical statement; num_results (int, default 10): max results.
+        Returns: {"query": str, "count": int, "results": [{"title","theorem","arxiv_id","theorem_id"}], "endpoint": str}
+        Notes: Calls leansearch.net; results may be partial. Fall back to WebSearch if none are useful."""
         return search_arxiv_theorems(query=query, num_results=num_results)
 
     @app.tool(name="memory_init")
@@ -380,6 +389,10 @@ def build_mcp_app() -> Optional[Any]:
         problem_id: str,
         meta: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
+        """When to call: Once at the start of a new problem, before any other memory calls.
+        Args: problem_id (str): unique problem identifier; meta (dict, optional): extra metadata to store.
+        Returns: {"problem_id": str, "run_dir": str, "memory_dir": str, "meta_path": str, "channels": dict}
+        Notes: Idempotent — safe to call multiple times; existing meta is merged, not overwritten."""
         return memory_init(problem_id=problem_id, meta=meta)
 
     @app.tool(name="memory_append")
@@ -388,6 +401,10 @@ def build_mcp_app() -> Optional[Any]:
         channel: str,
         record: Dict[str, Any],
     ) -> Dict[str, Any]:
+        """When to call: Persist any finding the next loop iteration will need — subgoals, counterexamples, failed paths, proof steps, conclusions.
+        Args: problem_id (str): the problem id; channel (str): one of the allowed channel names; record (dict): the record to store (shape is up to the caller).
+        Returns: {"kind": str, "written": bool, "channel_count": int}
+        Notes: Channel determines 'kind' label in returns. See '$record-keeping' skill for record shape guidance."""
         return memory_append(problem_id=problem_id, channel=channel, record=record)
 
     @app.tool(name="memory_search")
@@ -397,6 +414,10 @@ def build_mcp_app() -> Optional[Any]:
         channels: Optional[List[str]] = None,
         limit_per_channel: int = 10,
     ) -> Dict[str, Any]:
+        """When to call: Retrieve relevant prior records using a natural-language query across one or more memory channels.
+        Args: problem_id (str): the problem id; query (str): natural-language search query; channels (list[str], optional): which channels to search (default: all except events); limit_per_channel (int, default 10): max results per channel.
+        Returns: {"problem_id": str, "query": str, "channels": list, "limit_per_channel": int, "count": int, "results_by_channel": dict}
+        Notes: BM25-ranked, score-descending. Returns items shaped as {"kind","score","data"}."""
         return memory_search(
             problem_id=problem_id,
             query=query,
@@ -410,6 +431,10 @@ def build_mcp_app() -> Optional[Any]:
         branch_id: str,
         state: Dict[str, Any],
     ) -> Dict[str, Any]:
+        """When to call: Record the current state of a proof branch.
+        Args: problem_id (str): the problem id; branch_id (str): branch identifier; state (dict): current branch state.
+        Returns: {"kind": str, "written": bool, "channel_count": int}
+        Notes: Internally calls memory_append on 'branch_states' channel."""
         return branch_update(problem_id=problem_id, branch_id=branch_id, state=state)
 
     return app
