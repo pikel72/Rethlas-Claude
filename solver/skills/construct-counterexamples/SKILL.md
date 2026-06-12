@@ -1,4 +1,9 @@
 ---
+name: construct-counterexamples
+description: Test whether a conjecture, lemma, or intermediate claim can be refuted by constructing counterexamples.
+---
+
+# Construct Counterexamples
 
 ## When to use
 

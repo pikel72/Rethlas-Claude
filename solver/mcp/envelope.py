@@ -34,7 +34,7 @@ def channel_to_kind(channel: str) -> str:
     """
     if channel in _KIND_BY_CHANNEL:
         return _KIND_BY_CHANNEL[channel]
-    return channel.rstrip("s").replace("_", "_")
+    return channel.rstrip("s")
 
 
 def transform_item(item: Dict[str, Any], channel: str) -> Dict[str, Any]:

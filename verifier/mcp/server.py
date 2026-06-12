@@ -223,13 +223,8 @@ def memory_append(run_id: str, channel: str, record: Dict[str, Any]) -> Dict[str
             },
         )
 
-    return {
-        "status": "ok",
-        "run_id": resolved_run_id,
-        "channel": channel,
-        "path": str(target),
-        "entry": entry,
-    }
+    count = sum(1 for _ in _iter_jsonl(target))
+    return envelope.transform_append_result(channel, count)
 
 
 def memory_query(
