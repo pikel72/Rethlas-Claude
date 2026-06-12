@@ -1,159 +1,99 @@
-# Rethlas
+# Rethlas Claude Code Plugin
 
-Rethlas is a natural-language reasoning system for mathematics built around two Codex agents:
+Rethlas is a Claude Code plugin for project-local mathematical proof blueprint generation and verification.
 
-- The generation agent reads a math problem from a markdown file and writes an informal proof blueprint.
-- The verification agent checks that proof blueprint, produces a structured verdict, and serves as the generation agent's verifier.
+It ports upstream `frenzymath/Rethlas` to Claude Code as a plugin. The workflow keeps the important Rethlas loop:
 
-The intended deployment order is:
+1. generate a candidate proof blueprint
+2. verify it with an independent verifier agent
+3. repair from the verifier report
+4. repeat until the verifier returns a strict `correct` verdict or the attempt limit is reached
 
-1. Start the verification agent as a local HTTP service.
-2. Run the generation agent through Codex.
-3. Let the generation agent call the verification service during its proof-and-repair loop.
+This repository intentionally does not include local fork features such as job control, LiteLLM presets, long-run viewers, or event streaming.
 
-## Repository Layout
+## Use
 
-- `agents/generation`: the proof-generation agent
-- `agents/verification`: the proof-verification agent
-
-In particular, 
-- Original problems are put in `agents/generation/data/`, e.g. unclassified problem `agents/generation/data/example.md`, or classfied problem `agents/generation/data/modrep/modrep.md`, `agents/generation/data/example/example1.md`.
-- Zola project to render the results in a static website is in `agents/generation/site/`.
-
-## 1. Install Codex CLI
-
-Install the Codex CLI:
+Install or load the plugin, then run Claude in your math project directory:
 
 ```bash
-npm install -g @openai/codex
+claude
 ```
 
-
-## 2. Clone the Repository
-
-```bash
-git clone https://github.com/frenzymath/Rethlas.git
-cd Rethlas
-```
-
-## 3. Start the Verification Service
-
-
-```bash
-cd agents/verification
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-uvicorn api.server:app --host 0.0.0.0 --port 8091
-```
-
-Using uv
-```bash
-cd agents/verification
-uv venv 
-uv pip install -r requirements.txt
-uv run uvicorn api.server:app --host 0.0.0.0 --port 8091
-```
-
-## 4. Run the Generation Agent on the Included Example
-
-
-```bash
-cd agents/generation
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -r mcp/requirements.txt
-./tests/run_example.sh
-```
-
-This script:
-
-- reads `agents/generation/data/example.md`
-- runs `codex exec` inside `agents/generation`
-- resumes the same Codex session for up to `MAX_ITERATIONS` iterations, alternating search-disabled and search-enabled continuation turns
-- stops when `agents/generation/results/example/blueprint_verified.md` is produced
-- writes iteration logs to `agents/generation/logs/example/iter/`
-- writes memory artifacts to `agents/generation/memory/example/`
-- writes the draft proof to `agents/generation/results/example/blueprint.md`
-- writes the verified proof to `agents/generation/results/example/blueprint_verified.md` if verification succeeds
-
-You can set the maximum number of iterations:
-
-```bash
-MAX_ITERATIONS=10 ./tests/run_example.sh
-```
-
-## 5. Run Your Own Problem
-
-Put your problem in a markdown file under `agents/generation/data/`. Save that as:
+Invoke Rethlas from the Claude session in natural language:
 
 ```text
-agents/generation/data/my_problem.md
+用 Rethlas 解决 problems/foo.md，参考资料在 problems/foo.refs
 ```
 
-Then run:
+Claude should infer the Rethlas workflow, use a sibling refs directory when it is unambiguous, and default to 8 verification attempts.
 
-```bash
-cd agents/generation
-source .venv/bin/activate
-PROBLEM_FILE=data/my_problem.md ./tests/run_example.sh
-```
-
-You can group problems in subdirectories under `data/` and the generated artifacts preserve that structure. For example:
-
-```bash
-PROBLEM_FILE=data/modrep/modrep.md ./tests/run_example.sh
-```
-
-To attach user-provided references to a problem (this is optional; use it when you are working on your own research problem and want to provide the agent with unreleased notes), create a sibling reference directory with the same stem:
+For an explicit entrypoint, use:
 
 ```text
-agents/generation/data/modrep/modrep.refs/
+/rethlas-solve problems/foo.md --refs problems/foo.refs --max-attempts 8
 ```
 
-When that directory exists, the generation agent reads its files before using external search.
-Reference files may be markdown, LaTeX, plain text, or PDF, but markdown, LaTeX and plain text is prefered over PDF. Actually, PDFs are converted to extracted text under `.extracted/` before the agent runs.
+Both paths run inside the current Claude session. They do not start another Claude process and do not require a separate verifier service.
 
-## 6. View Results in the Browser
+## Runtime Output
 
-- `agents/generation/site`: Zola site for browsing results in the browser
+Rethlas writes run state to the current project:
 
-Results are markdown files with LaTeX math. To render them properly, a local [Zola](https://www.getzola.org/) site using the [MATbook](https://www.getzola.org/themes/matbook/) theme is included.
+```text
+.rethlas/runs/<run_id>/
+```
 
-### Prerequisites
+Important files:
 
-Install Zola.
+- `input.md`
+- `meta.json`
+- `blueprint.md`
+- `verification.json`
+- `blueprint_verified.md`
+- `attempts/<nnn>/blueprint.md`
+- `attempts/<nnn>/verification.json`
+- `memory/*.jsonl`
+- `downloads/`
+- `logs/`
 
-Zola can be easily installed using your package manager in terminal. For example, on Mac, you simply run
+`blueprint_verified.md` is the success marker. It is written only after the verifier returns `correct` with no critical errors and no gaps.
+
+## Development Load
+
+From this repository:
 
 ```bash
-brew install zola
+claude --plugin-dir .
 ```
 
-and on ArchLinux, run
+Then ask naturally in a test project, for example `用 Rethlas 解决 problems/foo.md`. For plugin validation:
 
 ```bash
-sudo pacman -S zola
+claude plugin validate . --strict
 ```
 
-For other operating systems, please see [Zola installation](https://www.getzola.org/documentation/getting-started/installation/).
+## Dependencies
 
-### Serve
-
-From `agents/generation/`:
+The MCP servers use Python:
 
 ```bash
-./site/serve.sh
+pip install -r solver/mcp/requirements.txt
+pip install -r verifier/mcp/requirements.txt
 ```
 
-On first run this automatically clones the [MATbook](https://www.getzola.org/themes/matbook/) theme. Then it syncs all results from `results/` into the site and starts a local server. Open http://localhost:3264 in your browser.
+The plugin MCP config invokes `python` from the environment that launches Claude. For development, activate a project-local `.venv` or make sure `python` on `PATH` is the interpreter where these requirements are installed.
 
-Each problem  in `agents/generation/data/your_category`  will be a section in a chapter called `your_category`, while problems directly in `agents/generation/data` will be under `unclassified` chapter.
+## Layout
 
-### Update the MATbook Theme
-
-```bash
-./site/setup_theme.sh
-```
-
-This pulls the latest version from the [MATbook repository](https://github.com/srliu3264/MATbook).
+- `.claude-plugin/plugin.json`: plugin manifest
+- `.mcp.json`: solver and verifier MCP server configuration
+- `skills/rethlas/SKILL.md`: natural-language Rethlas trigger
+- `commands/rethlas-solve.md`: `/rethlas-solve` entrypoint
+- `agents/verifier.md`: proof verifier subagent
+- `agents/subgoal-prover.md`: decomposition branch helper
+- `solver/skills/`: proof-generation skills
+- `solver/mcp/`: solver memory and theorem-search MCP tools
+- `verifier/skills/`: proof-verification skills
+- `verifier/mcp/`: verifier memory and JSON output MCP tools
+- `docs/runtime.md`: project-local runtime layout
+- `docs/port.md`: porting notes

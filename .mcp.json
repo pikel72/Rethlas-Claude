@@ -1,0 +1,22 @@
+{
+  "mcpServers": {
+    "solver-mcp": {
+      "command": "python",
+      "args": ["${CLAUDE_PLUGIN_ROOT}/solver/mcp/server.py"],
+      "cwd": "${CLAUDE_PLUGIN_ROOT}",
+      "env": {
+        "PYTHONUNBUFFERED": "1",
+        "RETHLAS_PROJECT_DIR": "${CLAUDE_PROJECT_DIR}"
+      }
+    },
+    "verifier-mcp": {
+      "command": "python",
+      "args": ["${CLAUDE_PLUGIN_ROOT}/verifier/mcp/server.py"],
+      "cwd": "${CLAUDE_PLUGIN_ROOT}",
+      "env": {
+        "PYTHONUNBUFFERED": "1",
+        "RETHLAS_PROJECT_DIR": "${CLAUDE_PROJECT_DIR}"
+      }
+    }
+  }
+}

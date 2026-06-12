@@ -1,0 +1,12 @@
+{
+  "name": "rethlas",
+  "version": "0.1.0",
+  "description": "Math reasoning workflow for proof blueprint generation and verification in Claude Code.",
+  "author": {
+    "name": "Rethlas Claude maintainers"
+  },
+  "license": "Apache-2.0",
+  "keywords": ["math", "reasoning", "proofs"],
+  "skills": ["./skills", "./solver/skills", "./verifier/skills"],
+  "mcpServers": "./.mcp.json"
+}

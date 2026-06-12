@@ -29,17 +29,16 @@ Thumbs.db
 *.p12
 *.pfx
 
-# Agent runtime artifacts
-agents/generation/logs/
-agents/generation/memory/
-agents/generation/results/
-agents/generation/downloads/
-agents/generation/data/**/*.refs/.extracted/
-agents/verification/logs/
-agents/verification/memory/
-agents/verification/results/
+# Claude/project runtime artifacts
+.claude/
+.rethlas/
 
-# Zola build output and downloaded theme are ignored by agents/generation/site/.gitignore too.
-agents/generation/site/public/
-agents/generation/site/themes/
-agents/generation/site/content/*/
+# Rethlas runtime artifacts if run from the plugin checkout during development
+solver/logs/
+solver/memory/
+solver/results/
+solver/downloads/
+solver/data/**/*.refs/.extracted/
+verifier/logs/
+verifier/memory/
+verifier/results/
