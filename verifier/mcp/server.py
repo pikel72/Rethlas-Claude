@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import sys
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional
@@ -21,6 +22,15 @@ except ImportError:  # pragma: no cover - dependency managed by requirements
 
 
 PLUGIN_VERIFIER_ROOT = Path(__file__).resolve().parents[1]
+
+# Ensure the plugin root is on sys.path so we can import from solver.mcp.
+# (Both MCP servers run as `python <path>/server.py` which only puts the
+# script's own directory on sys.path.)
+_PLUGIN_ROOT = Path(__file__).resolve().parents[2]
+if str(_PLUGIN_ROOT) not in sys.path:
+    sys.path.insert(0, str(_PLUGIN_ROOT))
+
+from solver.mcp import envelope
 
 
 def _project_root() -> Path:
@@ -252,11 +262,18 @@ def memory_query(
         items = list(reversed(items))
 
     items = items[:limit]
+    enveloped = [
+        {
+            "kind": envelope.channel_to_kind(channel),
+            "data": item.get("record", item),
+        }
+        for item in items
+    ]
     return {
         "run_id": resolved_run_id,
         "channel": channel,
-        "count": len(items),
-        "items": items,
+        "count": len(enveloped),
+        "items": enveloped,
     }
 
 
@@ -373,14 +390,26 @@ def build_mcp_app() -> Optional[Any]:
 
     @app.tool(name="search_arxiv_theorems")
     def _tool_search_arxiv_theorems(query: str, num_results: int = 10) -> Dict[str, Any]:
+        """When to call: Use for retrieving theorems, lemmas, definitions relevant to the current proof.
+        Args: query (str): full mathematical statement; num_results (int, default 10): max results.
+        Returns: {"query": str, "count": int, "results": [{"title","theorem","arxiv_id","theorem_id"}], "endpoint": str}
+        Notes: Calls leansearch.net. Fall back to WebSearch if no useful results."""
         return search_arxiv_theorems(query=query, num_results=num_results)
 
     @app.tool(name="memory_init")
     def _tool_memory_init(run_id: str, meta: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+        """When to call: Once at the start of a new verification run, before any other memory calls.
+        Args: run_id (str): unique run identifier; meta (dict, optional): extra metadata.
+        Returns: {"run_id": str, "run_dir": str, "memory_dir": str, "meta_path": str, "channels": dict}
+        Notes: Idempotent — existing meta is merged."""
         return memory_init(run_id=run_id, meta=meta)
 
     @app.tool(name="memory_append")
     def _tool_memory_append(run_id: str, channel: str, record: Dict[str, Any]) -> Dict[str, Any]:
+        """When to call: Persist verification findings — statement checks, reference checks, or reports.
+        Args: run_id (str): the run id; channel (str): allowed channel name; record (dict): the record to store.
+        Returns: {"kind": str, "written": bool, "channel_count": int}
+        Notes: Channel determines 'kind' label."""
         return memory_append(run_id=run_id, channel=channel, record=record)
 
     @app.tool(name="memory_query")
@@ -392,6 +421,10 @@ def build_mcp_app() -> Optional[Any]:
         limit: int = 100,
         reverse: bool = True,
     ) -> Dict[str, Any]:
+        """When to call: Retrieve verification records with precise filters or substring matching — prefer this over memory_search when you know the exact channel and filter key.
+        Args: run_id (str): the run id; channel (str): channel to query; filters (dict, optional): exact-match key/value pairs; contains (str, optional): substring to search; limit (int, default 100): max items; reverse (bool, default True): newest first.
+        Returns: {"run_id": str, "channel": str, "count": int, "items": [{"kind": str, "data": dict}]}
+        Notes: Precise filter/substring matching — different from solver memory_search which uses BM25 fuzzy ranking."""
         return memory_query(
             run_id=run_id,
             channel=channel,
@@ -403,6 +436,10 @@ def build_mcp_app() -> Optional[Any]:
 
     @app.tool(name="validate_verification_output")
     def _tool_validate_verification_output(payload: Dict[str, Any]) -> Dict[str, Any]:
+        """When to call: Check that a verification JSON payload conforms to the schema and logic rules before writing it.
+        Args: payload (dict): the verification output to validate.
+        Returns: {"valid": bool, "errors": [str]}
+        Notes: Validates schema + verdict/repair_hints consistency. Call before write_verification_output."""
         return validate_verification_output(payload=payload)
 
     @app.tool(name="write_verification_output")
@@ -411,6 +448,10 @@ def build_mcp_app() -> Optional[Any]:
         payload: Dict[str, Any],
         attempt: Optional[str] = None,
     ) -> Dict[str, Any]:
+        """When to call: Write a validated verification report to disk and record it in memory.
+        Args: run_id (str): the run id; payload (dict): validated verification output; attempt (str, optional): zero-padded attempt number.
+        Returns: {"status": str, "run_id": str, "run_dir": str, "output_path": str}
+        Notes: Validates before writing. Use validate_verification_output first for early feedback."""
         return write_verification_output(run_id=run_id, payload=payload, attempt=attempt)
 
     return app

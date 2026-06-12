@@ -13,6 +13,7 @@ skills:
   - obtain-immediate-conclusions
   - propose-subgoal-decomposition-plans
   - query-memory
+  - record-keeping
   - recursive-proving
   - search-math-results
   - verify-proof
