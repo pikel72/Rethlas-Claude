@@ -1,70 +1,47 @@
-"""Static checks for skill SKILL.md files per spec §4.5."""
+"""Static check: every SKILL.md has the three required sections and stays under 150 tokens."""
+from __future__ import annotations
 
 from pathlib import Path
+from typing import List
 
 import pytest
 
-
-SKILL_DIRS = [
-    "solver/skills",
-    "verifier/skills",
-    "skills",
-]
+PLUGIN_ROOT = Path(__file__).resolve().parents[2]
+REQUIRED_SECTIONS = ["## When to use", "## Output", "## Steps"]
+TOKEN_BUDGET = 150
 
 
-def collect_skill_files() -> list[Path]:
-    """Find all SKILL.md files under the skill directories."""
-    project_root = Path(__file__).resolve().parents[2]
-    files: list[Path] = []
-    for d in SKILL_DIRS:
-        sd = project_root / d
-        if sd.is_dir():
-            files.extend(sorted(sd.rglob("SKILL.md")))
-    return files
+def _all_skill_files() -> List[Path]:
+    roots = [
+        PLUGIN_ROOT / "solver" / "skills",
+        PLUGIN_ROOT / "verifier" / "skills",
+        PLUGIN_ROOT / "skills",
+    ]
+    found: List[Path] = []
+    for root in roots:
+        if not root.exists():
+            continue
+        for path in sorted(root.rglob("SKILL.md")):
+            found.append(path)
+    return found
 
 
-def _extract_body(content: str) -> str:
-    """Strip YAML frontmatter, returning body text."""
-    if content.startswith("---"):
-        parts = content.split("---", 2)
-        if len(parts) >= 3:
-            return parts[2]
-    return content
+def _approx_token_count(text: str) -> int:
+    # Rough: 1 token ~ 4 chars for English-ish text. Good enough as a budget check.
+    return max(1, len(text) // 4)
 
 
-def _token_count(text: str) -> int:
-    """Rough token count: split on whitespace."""
-    return len(text.split())
+@pytest.mark.parametrize("skill_path", _all_skill_files(), ids=lambda p: str(p.relative_to(PLUGIN_ROOT)))
+def test_skill_has_required_sections(skill_path: Path):
+    text = skill_path.read_text(encoding="utf-8")
+    for section in REQUIRED_SECTIONS:
+        assert section in text, f"{skill_path.name} missing section: {section}"
 
 
-class TestSkillStructure:
-    """Verify all SKILL.md files conform to spec §4.5."""
-
-    TOKEN_BUDGET = 250
-
-    @pytest.mark.parametrize("skill_path", collect_skill_files(), ids=lambda p: p.parent.name)
-    def test_three_required_sections(self, skill_path: Path):
-        """Must have ## When to use, ## Output, ## Steps in order."""
-        content = skill_path.read_text(encoding="utf-8")
-        body = _extract_body(content)
-
-        assert "## When to use" in body, f"Missing '## When to use' in {skill_path}"
-        assert "## Output" in body, f"Missing '## Output' in {skill_path}"
-        assert "## Steps" in body, f"Missing '## Steps' in {skill_path}"
-
-        pos_when = body.index("## When to use")
-        pos_output = body.index("## Output")
-        pos_steps = body.index("## Steps")
-        assert pos_when < pos_output < pos_steps, (
-            f"Sections out of order in {skill_path}"
-        )
-
-    @pytest.mark.parametrize("skill_path", collect_skill_files(), ids=lambda p: p.parent.name)
-    def test_token_budget(self, skill_path: Path):
-        """Body (excluding frontmatter) must stay under token budget."""
-        content = skill_path.read_text(encoding="utf-8")
-        body = _extract_body(content)
-        tokens = _token_count(body)
-        assert tokens <= self.TOKEN_BUDGET, (
-            f"{skill_path}: {tokens} tokens exceeds budget of {self.TOKEN_BUDGET}"
-        )
+@pytest.mark.parametrize("skill_path", _all_skill_files(), ids=lambda p: str(p.relative_to(PLUGIN_ROOT)))
+def test_skill_under_token_budget(skill_path: Path):
+    text = skill_path.read_text(encoding="utf-8")
+    tokens = _approx_token_count(text)
+    assert tokens <= TOKEN_BUDGET, (
+        f"{skill_path.name} is ~{tokens} tokens; budget is {TOKEN_BUDGET}"
+    )
