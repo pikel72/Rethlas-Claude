@@ -4,12 +4,20 @@ import json
 import math
 import os
 import re
+import sys
 from collections import Counter
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional
 
 import requests
+
+# Ensure the plugin root is on sys.path so we can import from solver.mcp.
+# (The MCP server runs as `python <path>/server.py` which only puts the
+# script's own directory on sys.path.)
+_PLUGIN_ROOT = Path(__file__).resolve().parents[2]
+if str(_PLUGIN_ROOT) not in sys.path:
+    sys.path.insert(0, str(_PLUGIN_ROOT))
 
 from solver.mcp import envelope
 
